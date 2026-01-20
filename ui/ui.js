@@ -25,14 +25,38 @@ var AppState = {
         nodes: []
     },
 
-    // 当前参数
+    // 当前参数 - Potrace 驱动架构
     params: {
         preset: 'logo_bw',          // 预设模式
+        engine: 'potrace',          // 引擎: potrace (主力), vtracer (备选)
+        colorMode: 'monochrome',    // 颜色模式: monochrome (黑白), color (彩色)
+
+        // === 通用参数 ===
         threshold: 128,              // 黑白阈值 (0-255)
         invert: false,               // 是否反转
-        filterSpeckle: 4,            // 去噪点 (0-64) - Spline 模式下不需要那么高
+
+        // === Potrace 参数 ===
+        turdsize: 2,                 // 去噪 (0-100), 消除小于此面积的斑点
+        alphamax: 1.0,               // 角点平滑度 (0.0-1.34), 越大越圆滑
+        opticurve: true,             // 启用曲线优化
+        opttolerance: 0.2,           // 曲线优化容差 (0.0-1.0)
+        turnpolicy: 4,               // 转向策略: 4 = MINORITY (少数服从多数)
+
+        // === 彩色模式参数 (SVGcode 风格) ===
+        posterize: true,             // 是否启用色彩量化
+        colorSteps: {                // 各通道的色阶数
+            r: 4,                    // 红色 (2-16)
+            g: 4,                    // 绿色 (2-16)
+            b: 4,                    // 蓝色 (2-16)
+            a: 2                     // 透明度 (2-8)
+        },
+        minPathSegments: 2,          // 最小路径段数 (过滤噪点路径)
+        strokeWidth: 0,              // 描边宽度 (0 = 无描边)
+
+        // === VTracer 备选参数 (保留兼容) ===
+        filterSpeckle: 4,            // 去噪点 (0-64)
         cornerThreshold: 60,         // 角点阈值 (0-180)
-        curveFitting: 'spline',      // 曲线拟合方式: pixel, polygon, spline - Spline 最平滑
+        curveFitting: 'spline',      // 曲线拟合: pixel, polygon, spline
         pathPrecision: 8             // 路径精度 (1-10)
     },
 
@@ -53,40 +77,58 @@ var AppState = {
 };
 
 /**
- * 预设配置
+ * 预设配置 - Potrace 驱动
  * 不同的预设对应不同的参数组合
  */
 var PRESETS = {
     logo_bw: {
         name: 'Logo (黑白)',
-        description: '适合简洁的标志和图标',
+        description: '适合简洁的标志和图标，使用 Potrace 引擎',
         params: {
+            engine: 'potrace',
+            colorMode: 'monochrome',
             threshold: 128,
             invert: false,
-            filterSpeckle: 4,
-            cornerThreshold: 60,
-            curveFitting: 'spline',
-            pathPrecision: 8
+            turdsize: 2,
+            alphamax: 1.0,
+            opticurve: true,
+            opttolerance: 0.2
         }
     },
-    icon_clean: {
-        name: 'Icon (干净)',
-        description: '适合图标，减少细节',
+    logo_color: {
+        name: 'Logo (彩色)',
+        description: '彩色标志，SVGcode 风格色彩分离',
         params: {
-            threshold: 140,
-            invert: false,
-            filterSpeckle: 10,
-            cornerThreshold: 90,
-            curveFitting: 'spline',
-            pathPrecision: 6
+            engine: 'potrace',
+            colorMode: 'color',
+            posterize: true,
+            colorSteps: { r: 6, g: 6, b: 6, a: 2 },
+            turdsize: 2,
+            alphamax: 1.0,
+            opticurve: true,
+            minPathSegments: 3
+        }
+    },
+    icon_simple: {
+        name: 'Icon (简洁)',
+        description: '适合图标，最少的颜色和路径',
+        params: {
+            engine: 'potrace',
+            colorMode: 'color',
+            posterize: true,
+            colorSteps: { r: 3, g: 3, b: 3, a: 2 },
+            turdsize: 4,
+            alphamax: 1.0,
+            minPathSegments: 5
         }
     },
     detailed: {
-        name: '详细',
-        description: '保留更多细节',
+        name: '详细 (VTracer)',
+        description: '保留更多细节，使用 VTracer 引擎',
         params: {
+            engine: 'vtracer',
+            colorMode: 'monochrome',
             threshold: 128,
-            invert: false,
             filterSpeckle: 2,
             cornerThreshold: 30,
             curveFitting: 'spline',
@@ -214,8 +256,15 @@ function handleSelectionUpdate(msg) {
  * 这是核心函数，在这里调用 VTracer 进行矢量化
  */
 function handleTraceRequest(msg) {
-    // 检查 VTracer 是否已加载
-    if (!VTracer.ready) {
+    // 检查引擎是否已加载
+    var engine = msg.params.engine || 'potrace';
+
+    if (engine === 'potrace' && !window.PotraceWASM) {
+        showError('Potrace 引擎未加载');
+        return;
+    }
+
+    if (engine === 'vtracer' && !VTracer.ready) {
         showError('VTracer 引擎未加载');
         return;
     }
@@ -226,7 +275,7 @@ function handleTraceRequest(msg) {
         return;
     }
 
-    console.log('[UI] 开始矢量化, 尺寸:', msg.source.width, 'x', msg.source.height);
+    console.log('[UI] 开始矢量化, 尺寸:', msg.source.width, 'x', msg.source.height, ', 引擎:', engine);
 
     // 把像素数据转换成 ImageData
     var bytes = new Uint8Array(msg.bytes);
@@ -331,9 +380,35 @@ function decodePngAndTrace(pngBytes, source, params, isPreview, requestId) {
         // 获取 ImageData
         var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        // 调用 VTracer
-        // 注意：预处理现在移到了 traceImageData 内部，以便支持重试逻辑
-        traceImageData(imageData, source, params, isPreview, requestId);
+        // ========================================
+        // 引擎调度逻辑 (Potrace 驱动架构)
+        // ========================================
+        var startTime = Date.now();
+        var engine = params.engine || 'potrace';
+        var colorMode = params.colorMode || 'monochrome';
+
+        console.log('[UI] 引擎调度: engine=' + engine + ', colorMode=' + colorMode);
+
+        if (engine === 'potrace') {
+            // Potrace 引擎 (主力)
+            if (colorMode === 'color') {
+                // 彩色模式：SVGcode 风格色彩分离
+                traceWithPotraceColor(imageData, source, params, isPreview, requestId, startTime);
+            } else {
+                // 黑白模式：先预处理再用 Potrace
+                preprocessImageData(imageData, params, false);
+                traceWithPotrace(imageData, source, params, isPreview, requestId, startTime);
+            }
+        } else if (engine === 'vtracer') {
+            // VTracer 引擎 (备选，支持 spline 曲线)
+            // 注意：VTracer 有智能重试机制，会在失败时自动降级到 Potrace
+            traceImageData(imageData, source, params, isPreview, requestId);
+        } else {
+            // 未知引擎，默认用 Potrace
+            console.warn('[UI] 未知引擎:', engine, '，使用 Potrace');
+            preprocessImageData(imageData, params, false);
+            traceWithPotrace(imageData, source, params, isPreview, requestId, startTime);
+        }
     };
 
     img.onerror = function () {
@@ -1239,36 +1314,283 @@ function updateSliderBackground(slider) {
     slider.style.background = 'linear-gradient(to right, ' + activeColor + ' 0%, ' + activeColor + ' ' + percentage + '%, ' + trackColor + ' ' + percentage + '%, ' + trackColor + ' 100%)';
 }
 
+// ============================================
+// 九、Potrace 核心引擎 (SVGcode 风格)
+// ============================================
+
 /**
- * 使用 Potrace 引擎进行矢量化
- * 这是 Level 2 的兜底策略，专门处理 VTracer 搞不定的黑白图像
+ * 从 ImageData 中提取所有独立颜色
+ * 返回一个对象，键是 "r,g,b,a" 字符串，值是该颜色所有像素的索引数组
  * 
- * @param {ImageData} imageData - 原始图像数据
+ * @param {ImageData} imageData - 图像数据
+ * @returns {Object} 颜色映射表 { "r,g,b,a": [index1, index2, ...] }
  */
-async function traceWithPotrace(imageData, source, params, isPreview, requestId, startTime) {
+function extractColors(imageData) {
+    var colors = {};
+    var data = imageData.data;
+
+    for (var i = 0; i < data.length; i += 4) {
+        var r = data[i];
+        var g = data[i + 1];
+        var b = data[i + 2];
+        var a = data[i + 3];
+
+        // 跳过完全透明的像素
+        if (a === 0) {
+            continue;
+        }
+
+        var rgba = r + ',' + g + ',' + b + ',' + a;
+
+        if (!colors[rgba]) {
+            colors[rgba] = [i];
+        } else {
+            colors[rgba].push(i);
+        }
+    }
+
+    console.log('[UI] 提取到', Object.keys(colors).length, '种独立颜色');
+    return colors;
+}
+
+/**
+ * 色彩量化 (Posterization)
+ * 将颜色数从数百万降到指定的色阶数
+ * 
+ * @param {ImageData} imageData - 原始图像数据 (会被就地修改)
+ * @param {Object} steps - 各通道的色阶数 { r, g, b, a }
+ * @returns {ImageData} 量化后的图像数据
+ */
+function posterizeImageData(imageData, steps) {
+    var data = imageData.data;
+    var rSteps = steps.r || 4;
+    var gSteps = steps.g || 4;
+    var bSteps = steps.b || 4;
+    var aSteps = (steps.a || 2) + 1; // +1 是为了保证完全透明和完全不透明
+
+    for (var i = 0; i < data.length; i += 4) {
+        // 量化公式: Math.floor((value / 255) * (steps - 1)) * (255 / (steps - 1))
+        data[i] = Math.floor((data[i] / 255) * (rSteps - 1)) * (255 / (rSteps - 1));
+        data[i + 1] = Math.floor((data[i + 1] / 255) * (gSteps - 1)) * (255 / (gSteps - 1));
+        data[i + 2] = Math.floor((data[i + 2] / 255) * (bSteps - 1)) * (255 / (bSteps - 1));
+        data[i + 3] = Math.floor((data[i + 3] / 255) * (aSteps - 1)) * (255 / (aSteps - 1));
+    }
+
+    console.log('[UI] 色彩量化完成, 色阶:', rSteps, 'x', gSteps, 'x', bSteps);
+    return imageData;
+}
+
+/**
+ * 使用 Potrace 进行彩色矢量化 (SVGcode 风格)
+ * 
+ * 核心思路：
+ * 1. 提取所有独立颜色
+ * 2. 为每种颜色生成黑白遮罩 (该颜色=黑色, 其他=白色)
+ * 3. 对每个遮罩调用 Potrace 生成路径
+ * 4. 将路径填充色替换为原始颜色
+ * 5. 合并所有路径生成最终 SVG
+ * 
+ * @param {ImageData} imageData - 图像数据
+ * @param {Object} source - 源节点信息
+ * @param {Object} params - 参数
+ * @param {boolean} isPreview - 是否预览模式
+ * @param {string} requestId - 请求 ID
+ * @param {number} startTime - 开始时间
+ */
+async function traceWithPotraceColor(imageData, source, params, isPreview, requestId, startTime) {
     if (!window.PotraceWASM) {
         console.error('Potrace 引擎未加载');
-        showError('Potrace 引擎未加载，无法执行降级策略');
+        showError('Potrace 引擎未加载');
         AppState.preview.isProcessing = false;
         updateUI();
         return;
     }
 
     try {
-        console.log('[UI] 正在使用 Potrace 引擎转换...');
+        console.log('[UI] 开始彩色 Potrace 转换 (SVGcode 风格)...');
 
-        // Potrace 参数映射
-        var options = {
-            turdsize: params.filterSpeckle || 2,
-            turnpolicy: 4, // POTRACE_TURNPOLICY_MINORITY
-            alphamax: 1,
-            opticurve: 1,
-            opttolerance: 0.2,
+        // 确保 Potrace 已初始化
+        await window.PotraceWASM.init();
+
+        // 1. 色彩量化 (如果启用)
+        if (params.posterize) {
+            imageData = posterizeImageData(imageData, params.colorSteps || { r: 4, g: 4, b: 4, a: 2 });
+        }
+
+        // 2. 提取所有颜色
+        var colors = extractColors(imageData);
+        var colorKeys = Object.keys(colors);
+        var totalColors = colorKeys.length;
+
+        if (totalColors === 0) {
+            showError('图像中没有可见像素');
+            AppState.preview.isProcessing = false;
+            updateUI();
+            return;
+        }
+
+        console.log('[UI] 开始处理', totalColors, '种颜色...');
+
+        // Potrace 参数
+        var potraceOptions = {
+            turdsize: params.turdsize || 2,
+            turnpolicy: params.turnpolicy || 4,
+            alphamax: params.alphamax || 1.0,
+            opticurve: params.opticurve ? 1 : 0,
+            opttolerance: params.opttolerance || 0.2,
             pathonly: false,
-            extractcolors: false // 强制黑白
+            extractcolors: false
         };
 
-        // 确保 Potrace 已初始化 (幂等操作)
+        var minPathSegments = params.minPathSegments || 2;
+        var strokeWidth = params.strokeWidth || 0;
+
+        // 3. 为每种颜色生成遮罩并转换
+        var svgPaths = [];
+        var svgPrefix = '';
+        var svgSuffix = '';
+        var processed = 0;
+
+        for (var i = 0; i < colorKeys.length; i++) {
+            var colorKey = colorKeys[i];
+            var occurrences = colors[colorKey];
+            var parts = colorKey.split(',');
+            var r = parts[0];
+            var g = parts[1];
+            var b = parts[2];
+            var a = parts[3];
+
+            // 创建该颜色的黑白遮罩
+            var maskData = new Uint8ClampedArray(imageData.data.length);
+            maskData.fill(255); // 白色背景
+
+            for (var j = 0; j < occurrences.length; j++) {
+                var loc = occurrences[j];
+                maskData[loc] = 0;     // R = 0 (黑色)
+                maskData[loc + 1] = 0; // G = 0
+                maskData[loc + 2] = 0; // B = 0
+                maskData[loc + 3] = 255; // A = 255 (不透明)
+            }
+
+            var maskImageData = new ImageData(maskData, imageData.width, imageData.height);
+
+            // 调用 Potrace
+            var svg = await window.PotraceWASM.potrace(maskImageData, potraceOptions);
+
+            if (!svg || svg.indexOf('<path') === -1) {
+                processed++;
+                continue;
+            }
+
+            // 提取 SVG 前缀和后缀 (只需要一次)
+            if (!svgPrefix) {
+                var prefixMatch = svg.match(/(.*?<svg[^>]+>)(.*?)(<\/svg>)/);
+                if (prefixMatch) {
+                    svgPrefix = prefixMatch[1]
+                        .replace(/\s+width="\d+(?:\.\d+)?"/, '')
+                        .replace(/\s+height="\d+(?:\.\d+)?"/, '');
+                    svgSuffix = prefixMatch[3];
+                }
+            }
+
+            // 替换填充色为原始颜色
+            var alpha = (parseInt(a) / 255).toFixed(2);
+            var fillAttr = 'fill="rgb(' + r + ',' + g + ',' + b + ')"';
+            var strokeAttr = 'stroke="rgb(' + r + ',' + g + ',' + b + ')"';
+
+            if (a !== '255') {
+                fillAttr += ' fill-opacity="' + alpha + '"';
+                strokeAttr += ' stroke-opacity="' + alpha + '"';
+            }
+
+            if (strokeWidth > 0) {
+                strokeAttr += ' stroke-width="' + strokeWidth + 'px"';
+            } else {
+                strokeAttr = 'stroke="none"';
+            }
+
+            svg = svg.replace(/fill="#000000"\s*stroke="none"/g, fillAttr + ' ' + strokeAttr);
+
+            // 过滤太短的路径
+            var pathRegex = /<path\s*d="([^"]+)"\/>/g;
+            var matches;
+            var shortPaths = [];
+
+            while ((matches = pathRegex.exec(svg)) !== null) {
+                var pathD = matches[1];
+                if (pathD.split(' ').length < minPathSegments) {
+                    shortPaths.push(matches[0]);
+                }
+            }
+
+            for (var k = 0; k < shortPaths.length; k++) {
+                svg = svg.replace(shortPaths[k], '');
+            }
+
+            // 提取路径部分
+            var pathMatch = svg.match(/(.*?<svg[^>]+>)(.*?)(<\/svg>)/);
+            if (pathMatch && pathMatch[2]) {
+                svgPaths.push(pathMatch[2]);
+            }
+
+            processed++;
+
+            // 进度更新 (每处理 10 种颜色输出一次)
+            if (processed % 10 === 0 || processed === totalColors) {
+                console.log('[UI] 彩色转换进度:', processed, '/', totalColors);
+            }
+        }
+
+        // 4. 合并所有路径
+        var finalSvg = svgPrefix + svgPaths.join('') + svgSuffix;
+
+        var elapsedMs = Date.now() - startTime;
+        console.log('[UI] 彩色 Potrace 转换完成, 耗时:', elapsedMs, 'ms, 路径组数:', svgPaths.length);
+
+        handleTraceResult(finalSvg, source, isPreview, requestId, elapsedMs);
+
+    } catch (e) {
+        console.error('Potrace Color failed:', e);
+        showError('彩色转换失败: ' + (e.message || e));
+        AppState.preview.isProcessing = false;
+        updateUI();
+    }
+}
+
+/**
+ * 使用 Potrace 引擎进行黑白矢量化
+ * 
+ * @param {ImageData} imageData - 原始图像数据
+ * @param {Object} source - 源节点信息
+ * @param {Object} params - 参数
+ * @param {boolean} isPreview - 是否预览模式
+ * @param {string} requestId - 请求 ID
+ * @param {number} startTime - 开始时间
+ */
+async function traceWithPotrace(imageData, source, params, isPreview, requestId, startTime) {
+    if (!window.PotraceWASM) {
+        console.error('Potrace 引擎未加载');
+        showError('Potrace 引擎未加载');
+        AppState.preview.isProcessing = false;
+        updateUI();
+        return;
+    }
+
+    try {
+        console.log('[UI] 正在使用 Potrace 引擎转换 (黑白模式)...');
+
+        // Potrace 参数
+        var options = {
+            turdsize: params.turdsize || params.filterSpeckle || 2,
+            turnpolicy: params.turnpolicy || 4,
+            alphamax: params.alphamax || 1.0,
+            opticurve: params.opticurve !== undefined ? (params.opticurve ? 1 : 0) : 1,
+            opttolerance: params.opttolerance || 0.2,
+            pathonly: false,
+            extractcolors: false
+        };
+
+        // 确保 Potrace 已初始化
         await window.PotraceWASM.init();
 
         // 执行转换
