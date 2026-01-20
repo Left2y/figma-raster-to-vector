@@ -1160,10 +1160,21 @@ function initEventListeners() {
         });
     }
 
-    // 阈值滑块
+    // 颜色模式选择器 (新)
+    var colorModeSelect = document.getElementById('colorMode-select');
+    if (colorModeSelect) {
+        colorModeSelect.addEventListener('change', function () {
+            updateParam('colorMode', this.value);
+            updateParamVisibility(); // 更新参数可见性
+        });
+    }
+
+    // === Potrace 参数控件 ===
+
+    // 阈值滑块 (黑白模式)
     initSlider('threshold', 0, 255);
 
-    // 反转开关
+    // 反转复选框
     var invertCheck = document.getElementById('invert-check');
     if (invertCheck) {
         invertCheck.addEventListener('change', function () {
@@ -1171,22 +1182,49 @@ function initEventListeners() {
         });
     }
 
-    // 去噪滑块
-    initSlider('filterSpeckle', 0, 64);
-
-    // 角点滑块
-    initSlider('cornerThreshold', 0, 180);
-
-    // 曲线拟合下拉框
-    var curveFittingSelect = document.getElementById('curveFitting-select');
-    if (curveFittingSelect) {
-        curveFittingSelect.addEventListener('change', function () {
-            updateParam('curveFitting', this.value);
+    // 色彩量化开关 (彩色模式)
+    var posterizeCheck = document.getElementById('posterize-check');
+    if (posterizeCheck) {
+        posterizeCheck.addEventListener('change', function () {
+            updateParam('posterize', this.checked);
         });
     }
 
-    // 精度滑块
-    initSlider('pathPrecision', 1, 10);
+    // 色阶滑块 (彩色模式)
+    var colorStepsSlider = document.getElementById('colorSteps-slider');
+    if (colorStepsSlider) {
+        colorStepsSlider.addEventListener('input', function () {
+            var val = parseInt(this.value, 10);
+            updateSliderBackground(this);
+            document.getElementById('colorSteps-value').textContent = val;
+
+            // 将单值扩展为 RGBA 对象
+            updateParam('colorSteps', { r: val, g: val, b: val, a: 2 });
+        });
+    }
+
+    // 去噪 (turdsize)
+    initSlider('turdsize', 0, 100);
+
+    // 圆滑度 (alphamax) - 特殊处理，UI显示 0-14, 实际值 0.0-1.4
+    var alphamaxSlider = document.getElementById('alphamax-slider');
+    if (alphamaxSlider) {
+        alphamaxSlider.addEventListener('input', function () {
+            var val = parseFloat(this.value);
+            updateSliderBackground(this);
+            var actualVal = val / 10;
+            document.getElementById('alphamax-value').textContent = actualVal.toFixed(1);
+            updateParam('alphamax', actualVal);
+        });
+    }
+
+    // 曲线优化 (opticurve)
+    var opticurveCheck = document.getElementById('opticurve-check');
+    if (opticurveCheck) {
+        opticurveCheck.addEventListener('change', function () {
+            updateParam('opticurve', this.checked);
+        });
+    }
 
     // 转换按钮
     var convertBtn = document.getElementById('convert-btn');
@@ -1206,24 +1244,116 @@ function initEventListeners() {
 }
 
 /**
- * 初始化滑块
+ * 更新参数可见性
+ * 根据当前的 colorMode 显示或隐藏参数组
+ */
+function updateParamVisibility() {
+    var mode = AppState.params.colorMode;
+    var monoGroup = document.getElementById('monochrome-params-group');
+    var colorGroup = document.getElementById('color-params-group');
+
+    if (mode === 'color') {
+        if (monoGroup) monoGroup.classList.add('hidden');
+        if (colorGroup) colorGroup.classList.remove('hidden');
+    } else {
+        if (monoGroup) monoGroup.classList.remove('hidden');
+        if (colorGroup) colorGroup.classList.add('hidden');
+    }
+}
+
+/**
+ * 更新参数控件的值
+ * 当预设改变时调用
+ */
+function updateParamControls() {
+    var p = AppState.params;
+
+    // 预设
+    setSelectValue('preset-select', p.preset);
+
+    // 颜色模式
+    setSelectValue('colorMode-select', p.colorMode);
+
+    // 更新可见性
+    updateParamVisibility();
+
+    // 黑白参数
+    setSliderValue('threshold', p.threshold);
+    setCheckValue('invert-check', p.invert);
+
+    // 彩色参数
+    setCheckValue('posterize-check', p.posterize);
+    if (p.colorSteps && typeof p.colorSteps.r === 'number') {
+        var stepVal = p.colorSteps.r;
+        var stepSlider = document.getElementById('colorSteps-slider');
+        if (stepSlider) {
+            stepSlider.value = stepVal;
+            updateSliderBackground(stepSlider);
+            var valEl = document.getElementById('colorSteps-value');
+            if (valEl) valEl.textContent = stepVal;
+        }
+    }
+
+    // Potrace 参数
+    setSliderValue('turdsize', p.turdsize);
+
+    // Alphamax 特殊处理
+    var alphaSlider = document.getElementById('alphamax-slider');
+    if (alphaSlider) {
+        alphaSlider.value = p.alphamax * 10;
+        updateSliderBackground(alphaSlider);
+        var valEl = document.getElementById('alphamax-value');
+        if (valEl) valEl.textContent = p.alphamax.toFixed(1);
+    }
+
+    setCheckValue('opticurve-check', p.opticurve);
+}
+
+// 辅助函数：设置控件值
+function setSelectValue(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.value = value;
+}
+
+function setSliderValue(name, value) {
+    var slider = document.getElementById(name + '-slider');
+    if (slider) {
+        slider.value = value;
+        updateSliderBackground(slider);
+        var label = document.getElementById(name + '-value');
+        if (label) label.textContent = value;
+    }
+}
+
+function setCheckValue(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.checked = !!value;
+}
+
+/**
+ * 初始化滑块 (标准)
  */
 function initSlider(name, min, max) {
     var slider = document.getElementById(name + '-slider');
     if (!slider) return;
 
-    slider.min = min;
-    slider.max = max;
+    // 如果传入了 min/max，更新属性
+    if (min !== undefined) slider.min = min;
+    if (max !== undefined) slider.max = max;
 
     slider.addEventListener('input', function () {
         var value = parseInt(this.value, 10);
         updateParam(name, value);
+        updateSliderBackground(this);
 
         var valueEl = document.getElementById(name + '-value');
         if (valueEl) {
             valueEl.textContent = value;
         }
     });
+
+    // 初始化背景
+    updateSliderBackground(slider);
 }
 
 /**

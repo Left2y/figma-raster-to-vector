@@ -486,6 +486,13 @@ button {
   .params-section {
     max-height: 160px;
   }
+  .params-section {
+    max-height: 160px;
+  }
+}
+
+.hidden {
+  display: none !important;
 }
 `;
 
@@ -519,29 +526,39 @@ ${cssContent}
     </div>
     
     <!-- 参数面板 -->
-    <div class="params-section">
-      <!-- 预设 -->
+    <div class="params-section" id="params-panel">
+      <!-- 基础设置 -->
       <div class="param-group">
-        <div class="param-group-title">预设</div>
+        <div class="param-group-title">基础设置</div>
         <div class="param-row">
-          <label class="param-label">模式</label>
+          <label class="param-label">预设</label>
           <div class="param-control">
             <select id="preset-select">
               <option value="logo_bw">Logo (黑白)</option>
-              <option value="icon_clean">Icon (干净)</option>
-              <option value="detailed">详细</option>
+              <option value="logo_color">Logo (彩色)</option>
+              <option value="icon_simple">Icon (简洁)</option>
+              <option value="detailed">详细 (VTracer)</option>
+            </select>
+          </div>
+        </div>
+        <div class="param-row">
+          <label class="param-label">颜色模式</label>
+          <div class="param-control">
+            <select id="colorMode-select">
+              <option value="monochrome">黑白 (Monochrome)</option>
+              <option value="color">彩色 (Color)</option>
             </select>
           </div>
         </div>
       </div>
       
       <!-- 黑白参数 -->
-      <div class="param-group">
+      <div class="param-group" id="monochrome-params-group">
         <div class="param-group-title">黑白转换</div>
         <div class="param-row">
           <label class="param-label">阈值</label>
           <div class="param-control">
-            <input type="range" id="threshold-slider" value="128">
+            <input type="range" id="threshold-slider" value="128" min="0" max="255">
             <span class="param-value" id="threshold-value">128</span>
           </div>
         </div>
@@ -555,39 +572,53 @@ ${cssContent}
           </div>
         </div>
       </div>
+
+      <!-- 彩色参数 (新) -->
+      <div class="param-group hidden" id="color-params-group">
+        <div class="param-group-title">色彩处理 (SVGcode)</div>
+        <div class="param-row">
+          <label class="param-label">色彩量化</label>
+          <div class="param-control">
+            <label class="checkbox-wrapper">
+              <input type="checkbox" id="posterize-check" checked>
+              <span>Posterization</span>
+            </label>
+          </div>
+        </div>
+        <div class="param-row">
+          <label class="param-label">色彩层级</label>
+          <div class="param-control">
+            <!-- 统一控制 RGB 色阶，简单起见 -->
+            <input type="range" id="colorSteps-slider" value="4" min="2" max="16">
+            <span class="param-value" id="colorSteps-value">4</span>
+          </div>
+        </div>
+      </div>
       
       <!-- 矢量化参数 -->
       <div class="param-group">
-        <div class="param-group-title">矢量化</div>
+        <div class="param-group-title">矢量化细节</div>
         <div class="param-row">
           <label class="param-label">去噪</label>
           <div class="param-control">
-            <input type="range" id="filterSpeckle-slider" value="4">
-            <span class="param-value" id="filterSpeckle-value">4</span>
+            <input type="range" id="turdsize-slider" value="2" min="0" max="100">
+            <span class="param-value" id="turdsize-value">2</span>
           </div>
         </div>
         <div class="param-row">
-          <label class="param-label">角点</label>
+          <label class="param-label">圆滑度</label>
           <div class="param-control">
-            <input type="range" id="cornerThreshold-slider" value="60">
-            <span class="param-value" id="cornerThreshold-value">60</span>
+            <input type="range" id="alphamax-slider" value="10" min="0" max="14" step="1">
+            <span class="param-value" id="alphamax-value">1.0</span>
           </div>
         </div>
         <div class="param-row">
-          <label class="param-label">曲线拟合</label>
+          <label class="param-label">曲线优化</label>
           <div class="param-control">
-            <select id="curveFitting-select">
-              <option value="spline">样条曲线</option>
-              <option value="polygon">多边形</option>
-              <option value="none">像素</option>
-            </select>
-          </div>
-        </div>
-        <div class="param-row">
-          <label class="param-label">精度</label>
-          <div class="param-control">
-            <input type="range" id="pathPrecision-slider" value="8">
-            <span class="param-value" id="pathPrecision-value">8</span>
+            <label class="checkbox-wrapper">
+              <input type="checkbox" id="opticurve-check" checked>
+              <span>启用 Opticurve</span>
+            </label>
           </div>
         </div>
       </div>

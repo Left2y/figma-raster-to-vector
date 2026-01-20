@@ -64,12 +64,32 @@
 
 ## 🛠️ 技术架构
 
-### 混合动力引擎逻辑 (Hybrid Engine)
-本插件实施了一套精密的 **3级重试机制 (3-Level Retry)** 以确保持续交付：
+### Potrace 驱动架构 (SVGcode 风格)
 
-1.  **Level 0 (标准模式)**：优先尝试 `VTracer` (Spline 样条模式)，追求最平滑的曲线质量。
-2.  **Level 1 (扰动修复)**：如果 VTracer 崩溃，尝试对输入图像施加微小的噪点扰动 (`perturbation`) 以避开几何奇异点。
-3.  **Level 2 (引擎切换)**：如果 VTracer 依然无法处理，系统将无缝**热切换**至 `Potrace` 引擎。Potrace 专为二值图像设计，能完美处理平行线和复杂几何图形，绝不崩溃。
+本插件采用与 [SVGcode](https://github.com/tomayac/SVGcode) (Google Chrome Labs) 相同的核心设计理念：**以 Potrace 为主引擎**。
+
+#### 核心算法流程
+
+**黑白模式 (Monochrome)**:
+1. 图像预处理（阈值二值化）
+2. 调用 Potrace WASM 生成 SVG 路径
+
+**彩色模式 (Color)** - SVGcode 风格色彩分离:
+1. **色彩量化 (Posterization)**: 将颜色数从数百万降到几十种（由 Color Steps 参数控制）
+2. **颜色提取 (Extract Colors)**: 遍历每个像素，按 RGBA 值分组
+3. **遮罩生成**: 为每种颜色创建独立的黑白遮罩
+4. **批量 Potrace**: 对每个遮罩调用 Potrace 生成路径
+5. **颜色填充**: 将路径填充色替换为原始颜色
+6. **路径合并**: 合并所有路径生成最终 SVG
+
+#### 引擎选择
+
+| 引擎 | 模式 | 特点 |
+|------|------|------|
+| **Potrace** (主力) | 黑白/彩色 | 极其稳定，永不崩溃，曲线平滑 |
+| **VTracer** (备选) | 黑白 | 支持 Spline 曲线，但可能遇到 "Parallel Lines" 崩溃 |
+
+当选择 VTracer 时，插件会自动检测崩溃并智能降级到 Potrace。
 
 ### 文件结构
 ```
