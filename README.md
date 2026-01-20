@@ -1,5 +1,7 @@
 # ⚡️ Figma Raster to Vector (Dual Engine WASM)
 
+[🇨🇳 中文文档](README_CN.md) | [🇺🇸 English](README.md)
+
 <div align="center">
   <h3>The Ultimate "No-Build" Image Vectorizer for Figma</h3>
   <p>Local Execution • Dual Engine (VTracer + Potrace) • Smart Retry • Zero Config</p>
