@@ -1,0 +1,21 @@
+{
+  "name": "figma-raster-to-vector",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "esm-potrace-wasm": "^0.4.1",
+    "potrace-js": "^0.0.6",
+    "vectortracer": "^0.1.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.2"
+  }
+}
