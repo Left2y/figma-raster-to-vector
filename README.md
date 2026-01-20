@@ -21,35 +21,39 @@
 - **🔒 Privacy First**: All processing happens locally in your browser/Figma via WebAssembly. No data is ever uploaded to a server.
 - **🎨 Premium UI**: Features a modern, responsive UI with real-time previews, dark mode support, and interactive controls.
 
-## 📦 Installation
+## 📦 Quick Start
 
-This plugin utilizes a "No-Build" approach, meaning the source code is directly runnable after a simple asset bundling step.
+The plugin is pre-built and ready to use. No additional setup required.
 
-### Prerequisites
-- Node.js (for bundling assets)
-
-### Steps
-1. **Clone the repository**:
+1. **Get the code**:
    ```bash
-   git clone https://github.com/your-username/figma-raster-to-vector.git
-   cd figma-raster-to-vector
+   git clone https://github.com/Left2y/figma-raster-to-vector.git
    ```
+   *(Or download ZIP from GitHub)*
 
-2. **Install dependencies**:
+2. **Import to Figma**:
+   - Open Figma Desktop App.
+   - Go to **Plugins** > **Development** > **Import plugin from manifest...**
+   - Select the `manifest.json` file in the folder.
+
+🎉 **That's it!** You can start using it right away.
+
+---
+
+## 💻 Development (Optional)
+
+If you want to modify the source code:
+
+1. **Install dependencies**:
    ```bash
    npm install
    ```
 
-3. **Build the single-file UI**:
-   This step bundles the WASM engines, CSS, and JS into a single `ui.html` file required by Figma.
+2. **Build**:
+   After modifying files in `ui/`, run this single command to update `ui.html`:
    ```bash
    node build.js
    ```
-
-4. **Import to Figma**:
-   - Open Figma Desktop App.
-   - Go to **Plugins** > **Development** > **Import plugin from manifest...**
-   - Select the `manifest.json` file in this directory.
 
 ## 🎮 How to Use
 
